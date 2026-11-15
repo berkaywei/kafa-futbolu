@@ -522,7 +522,7 @@ function connectKick3() {
 function reconnect3() { retry3++; setTimeout(connectKick3, Math.min(30000, 1000 * 2 ** Math.min(retry3, 5))); }
 
 // ---------------- kendini güncelleme: GitHub'a yeni dosya yüklenince sayfa (saha boşken/beklerken) kendini yeniler ----------------
-const BUILD = '15.11-06.05.32';       // (kafa topu sayfası da bu satıra bakarak yeni sürümü fark eder)
+const BUILD = '15.11-06.14.15';       // (kafa topu sayfası da bu satıra bakarak yeni sürümü fark eder)
 const BUILD3 = BUILD;
 let updPending3 = null;
 async function checkUpdate3() {
@@ -546,7 +546,7 @@ const glc = document.getElementById('gl'), uic = document.getElementById('ui'), 
 const RS = Math.max(0.25, Math.min(1, +(QP.get('coz') || 1)));       // 3B çözünürlük oranı
 uic.width = CW3; uic.height = CH3; glc.width = Math.round(CW3 * RS); glc.height = Math.round(CH3 * RS);
 const REGION = OBS ? { x: +(QP.get('x') || 410), y: +(QP.get('y') || 560), w: +(QP.get('w') || 1100), h: +(QP.get('h') || 520) } : { x: 0, y: 0, w: CW3, h: CH3 };
-const opt = { live: OBS || QP.get('canli') === '1', ground: QP.get('zemin') === '1', crowd: +(QP.get('kalabalik') || 0), spin: QP.get('don') !== '0', hud: QP.get('fps') !== '0', showcase: QP.get('vitrin') === '1' };
+const opt = { live: OBS || QP.get('canli') === '1', ground: QP.get('zemin') === '1', crowd: +(QP.get('kalabalik') || 0), spin: QP.get('don') !== '0', hud: OBS ? QP.get('fps') === '1' : QP.get('fps') !== '0',      // yayında sayaç kapalı (adrese ?fps=1 eklenirse açılır) showcase: QP.get('vitrin') === '1' };
 if (QP.get('cizgi') === '0') SV.outline = false;
 SV.halo = QP.get('hale') !== '0';
 const R2 = (a, b) => a + Math.random() * (b - a);
