@@ -45,7 +45,7 @@ html.obs #sahne{background:none;border:0;border-radius:0;aspect-ratio:auto}
     <div class="satir"><input id="vitrin" type="checkbox"><label for="vitrin" style="margin:0">Kademe vitrini (soldaki ismin yedi kademedeki hali)</label></div>
     <button id="yeni">Yeni düello</button></div>
   <div class="kart"><h2>Canlı akış denemesi</h2><p style="margin:0;color:var(--mut);font-size:14px">Yayındaki düzen: ilk gelen iner ve bekler, ikinci gelince düello başlar, kazanan kalır.</p>
-    <button id="cBerkay">Berkaywei: !testabone</button> <button id="cRastgele">Rastgele izleyici gelsin</button><br><button id="cPuan">Bekleyene +500 puan</button> <button id="cBitir">Düelloyu bitir</button> <button id="cSifirla">Sıfırla</button></div>
+    <button id="cBerkay">Berkaywei: !testabone</button> <button id="cRastgele">Rastgele izleyici gelsin</button><br><button id="cBoss">Boss başlat</button> <button id="cVur">6 kişi !vur</button><br><button id="cPuan">Bekleyene +500 puan</button> <button id="cBitir">Düelloyu bitir</button> <button id="cSifirla">Sıfırla</button></div>
 </div>
 <p class="not">Kademeler: 1–5 Tahta · 6–12 Zincir · 13–20 Demir · 21–28 Çelik · 29–36 Altın · 37–44 Elmas · 45–50 Efsanevi. Aradaki seviyelerde kalkan, dizlik, omuzluk, pelerin, sorguç, boynuz ve kristal gibi parçalar eklenir. Puan izleme süresine bağlıdır: sohbete yazan izleyici sonraki 10 dakika “izliyor” sayılır ve dakikada 10 puan alır (abonelerde 15). Seviye atlamak giderek zorlaşır: Zincir 0,7 saat, Demir 9 saat, Çelik 40 saat, Altın 105 saat, Elmas 218 saat, Efsanevi 390 saat izleme ister.</p>
 </div>
@@ -159,7 +159,7 @@ const SV = {
     const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS));
     gl.bindAttribLocation(pr, 0, 'aPos'); gl.bindAttribLocation(pr, 1, 'aMS'); gl.bindAttribLocation(pr, 2, 'aNrm');
     gl.linkProgram(pr); if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
-    gl.useProgram(pr);
+    gl.useProgram(pr); this.pr = pr;
     for (const n of ['uVP', 'uM', 'uScale', 'uOutline', 'uPal', 'uLight', 'uCam', 'uFlash', 'uMode', 'uAlpha', 'uInk', 'uDim', 'uGlow', 'uBase', 'uPat', 'uFx', 'uTime']) this.u[n] = gl.getUniformLocation(pr, n);
     const ll = Math.hypot(...this.light); this.light = this.light.map(v => v / ll);
     // parça verisi
@@ -203,13 +203,14 @@ const SV = {
     d.setUint8(6, mat); d.setUint8(7, 255); d.setInt8(8, n[0] * 127); d.setInt8(9, n[1] * 127); d.setInt8(10, n[2] * 127);
     return new Uint8Array(b);
   },
+  use() { this.gl.useProgram(this.pr); },      // (dokulu çizimden sonra şövalye programına dönüş)
   // kare başı
-  begin(region, eye, target, fovDeg) {
-    const gl = this.gl, c = this.canvas;
+  begin(region, eye, target, fovDeg, far = 60) {
+    const gl = this.gl, c = this.canvas; gl.useProgram(this.pr);
     gl.viewport(0, 0, c.width, c.height); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     const k = c.width / 1920;       // tuval daha düşük çözünürlükte olabilir (zayıf bilgisayarlar için)
     gl.viewport(Math.round(region.x * k), Math.round(c.height - (region.y + region.h) * k), Math.round(region.w * k), Math.round(region.h * k));
-    const P = M4.persp(new Float32Array(16), fovDeg * Math.PI / 180, region.w / region.h, 0.1, 60), Vw = M4.look(new Float32Array(16), eye, target);
+    const P = M4.persp(new Float32Array(16), fovDeg * Math.PI / 180, region.w / region.h, far > 60 ? 0.25 : 0.1, far), Vw = M4.look(new Float32Array(16), eye, target);
     M4.mul(P, Vw, this.vp); this.cam = eye; this.region = region; this.camR = [Vw[0], Vw[4], Vw[8]]; this.camU = [Vw[1], Vw[5], Vw[9]]; this.glows.length = 0;
     gl.uniformMatrix4fv(this.u.uVP, false, this.vp); gl.uniform3fv(this.u.uLight, this.light); gl.uniform3fv(this.u.uCam, eye);
     gl.uniform2f(this.u.uBase, -100, 1); gl.uniform3f(this.u.uPat, -9, -9, -9); gl.uniform1f(this.u.uFx, 0); gl.uniform1f(this.u.uTime, (performance.now() / 1000) % 628.318); gl.uniform1f(this.u.uFlash, 0); gl.uniform1f(this.u.uDim, 1); gl.uniform1f(this.u.uAlpha, 1); gl.uniform1f(this.u.uOutline, 0); gl.uniform1f(this.u.uMode, 0); gl.uniform3f(this.u.uInk, 0.05, 0.05, 0.09);
@@ -417,6 +418,248 @@ function gearFor(level, look) {
     set('namlu', glow, 2); set('tas', glow, 2); set('goz', hex3('#ff2414'), 2); set('arma', hex3('#ffc132'), 0.95);       // gözler kırmızı ve parlar
   }
   return { parts: P, pal, tier: t, pat, fx, rim };
+}
+
+</script>
+<script>
+// ================== 3B MOTOR 2: dokulu + iskeletli modeller (boss ve arena) ==================
+// Paket (boss.pak): başlık (JSON) + ikili veri. Boss modeli, animasyonu, arena parçaları ve dokular bu paketten okunur.
+const VS2 = `
+attribute vec3 aPos; attribute vec3 aNrm; attribute vec2 aUV; attribute vec4 aJ; attribute vec4 aW; attribute vec4 aCol;
+uniform mat4 uVP, uM; uniform vec4 uQ; uniform float uUVK, uSkin; uniform mat4 uJ[64];
+varying vec3 vN, vW; varying vec2 vUV; varying vec4 vCol;
+void main() {
+  vec4 p = vec4(aPos * uQ.w + uQ.xyz, 1.0); vec3 n = aNrm;
+  if (uSkin > 0.5) {
+    mat4 s = uJ[int(aJ.x + 0.5)] * aW.x + uJ[int(aJ.y + 0.5)] * aW.y + uJ[int(aJ.z + 0.5)] * aW.z + uJ[int(aJ.w + 0.5)] * aW.w;
+    p = s * p; n = mat3(s) * n;
+  }
+  vec4 w = uM * p; vW = w.xyz; vN = mat3(uM) * n; vUV = aUV * uUVK; vCol = aCol;
+  gl_Position = uVP * w;
+}`;
+const FS2 = `
+precision mediump float;
+uniform sampler2D uTex, uOrm; uniform vec3 uLight, uCam, uEmis, uFog; uniform vec2 uFogD; uniform vec4 uRenk;
+uniform float uMode, uFlash, uAlpha, uHasOrm, uKes, uDim; uniform vec3 uPL[6]; uniform vec3 uPLC[6];
+varying vec3 vN, vW; varying vec2 vUV; varying vec4 vCol;
+void main() {
+  vec4 t = texture2D(uTex, vUV) * uRenk;
+  if (uMode > 1.5 && t.a < uKes) discard;
+  if (uMode > 0.5 && uMode < 1.5) { gl_FragColor = vec4(t.rgb * t.a * uEmis * uAlpha, 0.0); return; }      // ışıyan yüzey (toplamalı)
+  vec3 n = normalize(vN); if (!gl_FrontFacing) n = -n;
+  vec3 v = normalize(uCam - vW), base = t.rgb * vCol.rgb;
+  float ao = 1.0, rough = 0.85, metal = 0.0;
+  if (uHasOrm > 0.5) { vec3 o = texture2D(uOrm, vUV).rgb; ao = o.r; rough = o.g; metal = o.b; }
+  float d = dot(n, uLight);
+  vec3 lit = mix(vec3(0.33, 0.33, 0.50), vec3(0.96, 0.92, 0.85), smoothstep(-0.35, 0.80, d)) + 0.06 * n.y;      // soğuk gölge, sıcak ışık
+  for (int i = 0; i < 6; i++) { vec3 L = uPL[i] - vW; float dd = dot(L, L); lit += uPLC[i] * (0.35 + 0.65 * max(dot(n, L * inversesqrt(dd + 0.0001)), 0.0)) / (1.0 + dd * 0.22); }      // meşale ışıkları
+  vec3 c = base * lit * mix(1.0, ao, 0.85) * uDim;
+  vec3 r = reflect(-v, n); float sky = smoothstep(-0.4, 0.6, r.y);
+  c = mix(c, base * mix(vec3(0.26, 0.24, 0.36), vec3(1.30, 1.26, 1.20), sky) * ao * uDim, metal * 0.55);
+  float sp = pow(max(dot(n, normalize(uLight + v)), 0.0), mix(70.0, 8.0, rough));
+  c += sp * (0.06 + 0.85 * metal) * (1.0 - rough * 0.75) * ao * mix(vec3(1.0), base * 1.6, metal * 0.6);
+  c += pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.10 * lit * base;
+  c = mix(c, base * 1.25 + uEmis * t.rgb, 1.0 - vCol.a);                                  // kendinden ışıklı kısımlar (vitray, ateş, reaktör)
+  c += uEmis * t.rgb * vCol.a;
+  c = mix(c, uFog, smoothstep(uFogD.x, uFogD.y, length(uCam - vW)));
+  c = mix(c, vec3(1.0), uFlash);
+  gl_FragColor = vec4(c * uAlpha, uAlpha);
+}`;
+
+// film filtresi: kenar kararması + sıcak/soğuk renk tonu + kumlanma (grain). Sahne çizildikten sonra üstüne çarpılarak uygulanır.
+const VS3 = `attribute vec2 aP; void main() { gl_Position = vec4(aP, 0.0, 1.0); }`;
+const FS3 = `
+precision mediump float; uniform vec4 uR; uniform float uT, uGrain, uVig, uPx;
+float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  vec2 c = (gl_FragCoord.xy - uR.xy) / uR.zw - 0.5; float d = dot(c * vec2(1.0, 0.82), c * vec2(1.0, 0.82));
+  float v = (1.0 - uVig * smoothstep(0.08, 0.60, d)) * (1.0 + 0.012 * sin(uT * 47.0));
+  vec3 tint = mix(vec3(0.78, 0.90, 1.10), vec3(1.08, 1.0, 0.89), smoothstep(0.50, 0.0, d));
+  float g = (h(floor(gl_FragCoord.xy / uPx) + fract(uT * 7.31) * 113.0) - 0.5) * uGrain;
+  gl_FragColor = vec4(0.5 * tint * v * (1.0 + g), 0.5);
+}`;
+const Q4 = {      // dördey → 4x4 (öteleme ve ölçekle), sütun düzeni
+  trs(o, t, q, s) {
+    const x = q[0], y = q[1], z = q[2], w = q[3], xx = x * x, yy = y * y, zz = z * z, xy = x * y, xz = x * z, yz = y * z, wx = w * x, wy = w * y, wz = w * z;
+    o[0] = (1 - 2 * (yy + zz)) * s[0]; o[1] = 2 * (xy + wz) * s[0]; o[2] = 2 * (xz - wy) * s[0]; o[3] = 0;
+    o[4] = 2 * (xy - wz) * s[1]; o[5] = (1 - 2 * (xx + zz)) * s[1]; o[6] = 2 * (yz + wx) * s[1]; o[7] = 0;
+    o[8] = 2 * (xz + wy) * s[2]; o[9] = 2 * (yz - wx) * s[2]; o[10] = (1 - 2 * (xx + yy)) * s[2]; o[11] = 0;
+    o[12] = t[0]; o[13] = t[1]; o[14] = t[2]; o[15] = 1; return o;
+  },
+  mul(a, ao, b, bo, o, oo) {      // o[oo..] = a[ao..] · b[bo..]
+    for (let c = 0; c < 4; c++) { const b0 = b[bo + c * 4], b1 = b[bo + c * 4 + 1], b2 = b[bo + c * 4 + 2], b3 = b[bo + c * 4 + 3]; for (let r = 0; r < 4; r++) o[oo + c * 4 + r] = a[ao + r] * b0 + a[ao + 4 + r] * b1 + a[ao + 8 + r] * b2 + a[ao + 12 + r] * b3; }
+  }
+};
+
+const SV2 = {
+  ready: false, pak: null, u: {}, tex: [], white: null, lights: new Float32Array(18), lightC: new Float32Array(18), fog: [0.05, 0.05, 0.09], fogD: [60, 90],
+  init() {
+    const gl = SV.gl; this.gl = gl;
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+    const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS2)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS2));
+    ['aPos', 'aNrm', 'aUV', 'aJ', 'aW', 'aCol'].forEach((n, i) => gl.bindAttribLocation(pr, i, n));
+    gl.linkProgram(pr); if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+    this.pr = pr; gl.useProgram(pr);
+    for (const n of ['uVP', 'uM', 'uQ', 'uUVK', 'uSkin', 'uJ', 'uTex', 'uOrm', 'uLight', 'uCam', 'uEmis', 'uFog', 'uFogD', 'uRenk', 'uMode', 'uFlash', 'uAlpha', 'uHasOrm', 'uKes', 'uDim', 'uPL', 'uPLC']) this.u[n] = gl.getUniformLocation(pr, n);
+    gl.uniform1i(this.u.uTex, 0); gl.uniform1i(this.u.uOrm, 1);
+    this.white = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, this.white); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
+    const p3 = gl.createProgram(); gl.attachShader(p3, sh(gl.VERTEX_SHADER, VS3)); gl.attachShader(p3, sh(gl.FRAGMENT_SHADER, FS3)); gl.bindAttribLocation(p3, 0, 'aP'); gl.linkProgram(p3); if (!gl.getProgramParameter(p3, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p3));
+    this.pr3 = p3; this.u3 = {}; for (const n of ['uR', 'uT', 'uGrain', 'uVig', 'uPx']) this.u3[n] = gl.getUniformLocation(p3, n);
+    this.tri = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.tri); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    this.aniso = gl.getExtension('EXT_texture_filter_anisotropic');
+    SV.use();
+  },
+  // paketi indir (gzip'liyse aç), dokuları ve ağları GPU'ya yükle
+  async load(url) {
+    const r = await fetch(url, { cache: 'no-cache' }); if (!r.ok) throw new Error('paket ' + r.status);
+    let buf = await r.arrayBuffer();
+    if (new Uint8Array(buf, 0, 2)[0] === 0x1f && new Uint8Array(buf, 0, 2)[1] === 0x8b) buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+    const dv = new DataView(buf); if (dv.getUint32(0, true) !== 0x31505653) throw new Error('paket biçimi tanınmadı');
+    const jl = dv.getUint32(4, true), head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, jl))), base = 8 + jl + ((4 - jl % 4) % 4);
+    const bin = new Uint8Array(buf, base), gl = this.gl;
+    const texOf = async (t) => {
+      const bmp = await createImageBitmap(new Blob([bin.subarray(t.off, t.off + t.len)], { type: 'image/webp' }), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+      const x = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, x); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp); gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      const w = t.kenar ? gl.CLAMP_TO_EDGE : gl.REPEAT; gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, w); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, w);
+      if (this.aniso) gl.texParameterf(gl.TEXTURE_2D, this.aniso.TEXTURE_MAX_ANISOTROPY_EXT, 4);
+      bmp.close && bmp.close(); return x;
+    };
+    const meshOf = (m, stride) => {
+      const vb = gl.createBuffer(), ib = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, bin.subarray(m.vo, m.vo + m.vc * stride), gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, bin.subarray(m.io, m.io + m.ic * 2), gl.STATIC_DRAW);
+      return { vb, ib, n: m.ic, stride, ...m };
+    };
+    const B = head.boss;
+    if (B) {
+      B.texGL = await Promise.all(B.tex.map(texOf)); B.meshGL = B.meshes.map(m => meshOf(m, 24));
+      const f32 = (off, n) => new Float32Array(buf.slice(base + off, base + off + n * 4)), i16 = (off, n) => new Int16Array(buf.slice(base + off, base + off + n * 2));
+      B.ibmA = f32(B.ibm, B.joints.length * 16);
+      for (const t of B.anim.tracks) { if (t.r != null) t.rA = i16(t.r, B.anim.n * 4); if (t.t != null) t.tA = f32(t.t, B.anim.n * 3); if (t.s != null) t.sA = f32(t.s, B.anim.n * 3); }
+      for (const n of B.nodes) if (n.m) n.mA = new Float32Array(n.m);
+    }
+    const A = head.arena;
+    if (A) { A.texGL = await Promise.all(A.tex.map(texOf)); A.meshGL = A.meshes.map(m => meshOf(m, 20)); for (const i of A.inst) i.mA = new Float32Array(i.m); }
+    this.pak = head; this.ready = true; return head;
+  },
+  // kare başı: dokulu çizim programına geç (SV.begin'den SONRA çağrılır; kamera ondan alınır). bg: bölgeyi dolduran zemin rengi
+  begin(bg) {
+    const gl = this.gl, u = this.u; gl.useProgram(this.pr);
+    if (bg) { const c = SV.canvas, k = c.width / 1920, r = SV.region; gl.enable(gl.SCISSOR_TEST); gl.scissor(Math.round(r.x * k), Math.round(c.height - (r.y + r.h) * k), Math.round(r.w * k), Math.round(r.h * k)); gl.clearColor(bg[0], bg[1], bg[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.clearColor(0, 0, 0, 0); gl.disable(gl.SCISSOR_TEST); }
+    gl.uniformMatrix4fv(u.uVP, false, SV.vp); gl.uniform3fv(u.uLight, SV.light); gl.uniform3fv(u.uCam, SV.cam);
+    gl.uniform3fv(u.uFog, this.fog); gl.uniform2fv(u.uFogD, this.fogD); gl.uniform3fv(u.uPL, this.lights); gl.uniform3fv(u.uPLC, this.lightC);
+    gl.uniform1f(u.uFlash, 0); gl.uniform1f(u.uAlpha, 1); gl.uniform1f(u.uDim, 1); gl.uniform1f(u.uMode, 0); gl.uniform1f(u.uHasOrm, 0); gl.uniform1f(u.uKes, 0.5); gl.uniform4f(u.uRenk, 1, 1, 1, 1); gl.uniform3f(u.uEmis, 0, 0, 0);
+    gl.disable(gl.BLEND); gl.depthMask(true); gl.frontFace(gl.CCW); gl.cullFace(gl.BACK); gl.enable(gl.CULL_FACE);
+  },
+  end() { const gl = this.gl; for (let i = 3; i < 6; i++) gl.disableVertexAttribArray(i); gl.activeTexture(gl.TEXTURE0); gl.enable(gl.CULL_FACE); gl.disable(gl.BLEND); gl.depthMask(true); SV.use(); },
+  bind(m) {
+    const gl = this.gl, s = m.stride;
+    gl.bindBuffer(gl.ARRAY_BUFFER, m.vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ib);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.SHORT, false, s, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.BYTE, true, s, 8);
+    gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 2, gl.SHORT, false, s, 12);
+    if (s === 24) {
+      gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.UNSIGNED_BYTE, false, s, 16);
+      gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 4, gl.UNSIGNED_BYTE, true, s, 20);
+      gl.disableVertexAttribArray(5); gl.vertexAttrib4f(5, 1, 1, 1, 1);
+    } else {
+      gl.disableVertexAttribArray(3); gl.disableVertexAttribArray(4); gl.vertexAttrib4f(3, 0, 0, 0, 0); gl.vertexAttrib4f(4, 1, 0, 0, 0);
+      gl.enableVertexAttribArray(5); gl.vertexAttribPointer(5, 4, gl.UNSIGNED_BYTE, true, s, 16);
+    }
+  },
+  setTex(t, orm) { const gl = this.gl; gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, orm || this.white); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, t || this.white); gl.uniform1f(this.u.uHasOrm, orm ? 1 : 0); },
+  // film filtresi: çizilmiş sahnenin üstüne (bölge içinde) uygulanır; sonunda şövalye programına dönülür
+  post(time, grain, vig) {
+    const gl = this.gl, c = SV.canvas, k = c.width / 1920, r = SV.region, x = Math.round(r.x * k), y = Math.round(c.height - (r.y + r.h) * k), w = Math.round(r.w * k), h = Math.round(r.h * k);
+    gl.useProgram(this.pr3); gl.bindBuffer(gl.ARRAY_BUFFER, this.tri); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.disableVertexAttribArray(1); gl.disableVertexAttribArray(2);
+    gl.uniform4f(this.u3.uR, x, y, w, h); gl.uniform1f(this.u3.uT, time % 100); gl.uniform1f(this.u3.uGrain, grain); gl.uniform1f(this.u3.uVig, vig); gl.uniform1f(this.u3.uPx, Math.max(1, 1.6 * k));
+    gl.enable(gl.SCISSOR_TEST); gl.scissor(x, y, w, h); gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND); gl.blendFunc(gl.DST_COLOR, gl.SRC_COLOR);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.disable(gl.SCISSOR_TEST); gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE); gl.disable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); SV.use();
+  },
+  // arenanın adıyla bir parçası (ışık gücü .k ile değişir; 0 = çizilmez) ve o parçanın sahnedeki kopyaları (matrisi .mA)
+  part(name) { const A = this.pak.arena, i = A.adlar.indexOf(name); return i < 0 ? {} : A.meshGL[i]; },
+  copies(name) { const A = this.pak.arena, i = A.adlar.indexOf(name); return A.inst.filter(x => x.mesh === i); },
+  // arena: önce opak parçalar, sonra ışıyanlar
+  drawArena(time) {
+    const A = this.pak && this.pak.arena; if (!A) return;
+    const gl = this.gl, u = this.u; gl.uniform1f(u.uSkin, 0); let last = -1, lastM = null;
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass === 1) { gl.enable(gl.BLEND); gl.depthMask(false); gl.uniform1f(u.uMode, 1); }
+      for (const it of A.inst) {
+        const m = A.meshGL[it.mesh]; if ((m.mode === 1) !== (pass === 1) || m.k === 0) continue;
+        if (m !== lastM) {
+          this.bind(m); lastM = m; gl.uniform4f(u.uQ, 0, 0, 0, m.q); gl.uniform1f(u.uUVK, m.uvk);
+          if (m.tex !== last) { this.setTex(A.texGL[m.tex]); last = m.tex; }
+          if (m.cift) gl.disable(gl.CULL_FACE); else gl.enable(gl.CULL_FACE);
+          const e = m.emis || [0, 0, 0], fl = m.titre ? 0.82 + 0.18 * Math.sin(time * 9 + it.mA[12] * 3) * Math.sin(time * 5.3 + it.mA[14]) : 1; const kk = fl * (m.k == null ? 1 : m.k); gl.uniform3f(u.uEmis, e[0] * kk, e[1] * kk, e[2] * kk);
+        }
+        gl.uniformMatrix4fv(u.uM, false, it.mA); gl.drawElements(gl.TRIANGLES, m.n, gl.UNSIGNED_SHORT, 0); SV.drawCalls++; SV.tris += m.n / 3;
+      }
+    }
+    gl.disable(gl.BLEND); gl.depthMask(true); gl.uniform1f(u.uMode, 0); gl.enable(gl.CULL_FACE); gl.uniform3f(u.uEmis, 0, 0, 0);
+  }
+};
+
+// ---------------- iskeletli model (boss) ----------------
+class Model2 {
+  constructor(B) {
+    this.B = B; const n = B.nodes.length;
+    this.world = new Float32Array(n * 16); this.local = new Float32Array(16); this.jm = new Float32Array(64 * 16); this.M = M4.id(); this.flash = 0; this.dim = 1; this.alpha = 1;
+    this.trackOf = new Array(n).fill(null); for (const t of B.anim.tracks) this.trackOf[t.node] = t;
+    this.q = [0, 0, 0, 1]; this.t3 = [0, 0, 0]; this.s3 = [1, 1, 1]; this.time = 0; this.ovr = new Map(); this.idx = Object.create(null);
+    B.nodes.forEach((n, i) => { this.idx[n.ad.replace(/_\d+$/, '')] = i; });
+  }
+  // kemiğe ek dönüş (kendi ekseninde, radyan): hazır animasyonun üstüne yürüme / kükreme gibi hareketler bindirmek için
+  rot(name, ax, ay, az) {
+    const i = this.idx[name]; if (i == null) return;
+    if (!ax && !ay && !az) { this.ovr.delete(i); return; }
+    const cx = Math.cos(ax / 2), sx = Math.sin(ax / 2), cy = Math.cos(ay / 2), sy = Math.sin(ay / 2), cz = Math.cos(az / 2), sz = Math.sin(az / 2);
+    this.ovr.set(i, [sx * cy * cz - cx * sy * sz, cx * sy * cz + sx * cy * sz, cx * cy * sz - sx * sy * cz, cx * cy * cz + sx * sy * sz]);
+  }
+  // animasyonun "time" saniyesindeki duruşu hesapla
+  pose(time) {
+    const B = this.B, A = B.anim, f = Math.max(0, Math.min(A.n - 1.001, time * A.fps)), i0 = Math.floor(f), k = f - i0, W = this.world, L = this.local, q = this.q, t3 = this.t3, s3 = this.s3;
+    this.time = time;
+    for (let i = 0; i < B.nodes.length; i++) {
+      const nd = B.nodes[i]; let src = nd.mA;
+      if (!src) {
+        const tr = this.trackOf[i];
+        if (tr && tr.rA) { const a = tr.rA, o = i0 * 4; let l = 0; for (let c = 0; c < 4; c++) { q[c] = a[o + c] + (a[o + 4 + c] - a[o + c]) * k; l += q[c] * q[c]; } l = 1 / Math.sqrt(l); q[0] *= l; q[1] *= l; q[2] *= l; q[3] *= l; } else { q[0] = nd.r[0]; q[1] = nd.r[1]; q[2] = nd.r[2]; q[3] = nd.r[3]; }
+        const ov = this.ovr.get(i); if (ov) { const ax = q[0], ay = q[1], az = q[2], aw = q[3], bx = ov[0], by = ov[1], bz = ov[2], bw = ov[3]; q[0] = aw * bx + ax * bw + ay * bz - az * by; q[1] = aw * by - ax * bz + ay * bw + az * bx; q[2] = aw * bz + ax * by - ay * bx + az * bw; q[3] = aw * bw - ax * bx - ay * by - az * bz; }
+        if (tr && tr.tA) { const a = tr.tA, o = i0 * 3; for (let c = 0; c < 3; c++) t3[c] = a[o + c] + (a[o + 3 + c] - a[o + c]) * k; } else { t3[0] = nd.t[0]; t3[1] = nd.t[1]; t3[2] = nd.t[2]; }
+        if (tr && tr.sA) { const a = tr.sA, o = i0 * 3; for (let c = 0; c < 3; c++) s3[c] = a[o + c] + (a[o + 3 + c] - a[o + c]) * k; } else { s3[0] = nd.s[0]; s3[1] = nd.s[1]; s3[2] = nd.s[2]; }
+        Q4.trs(L, t3, q, s3); src = L;
+      }
+      if (nd.p < 0) W.set(src, i * 16); else Q4.mul(W, nd.p * 16, src, 0, W, i * 16);
+    }
+    for (let j = 0; j < B.joints.length; j++) Q4.mul(W, B.joints[j] * 16, B.ibmA, j * 16, this.jm, j * 16);
+  }
+  // model uzayındaki bir kemiğin dünya konumu (efektler için)
+  jointPos(name) {
+    const i = this.idx[name]; if (i == null) return null;
+    const W = this.world, o = i * 16, M = this.M, x = W[o + 12], y = W[o + 13], z = W[o + 14];
+    return [M[0] * x + M[4] * y + M[8] * z + M[12], M[1] * x + M[5] * y + M[9] * z + M[13], M[2] * x + M[6] * y + M[10] * z + M[14]];
+  }
+  draw(glowK = 1) {
+    const gl = SV2.gl, u = SV2.u, B = this.B;
+    gl.uniform1f(u.uSkin, 1); gl.uniformMatrix4fv(u.uJ, false, this.jm); gl.uniformMatrix4fv(u.uM, false, this.M);
+    gl.uniform4f(u.uQ, B.cen[0], B.cen[1], B.cen[2], B.half / 32767); gl.uniform1f(u.uUVK, 1 / 8192); gl.uniform1f(u.uFlash, this.flash); gl.uniform1f(u.uDim, this.dim); gl.uniform1f(u.uAlpha, this.alpha);
+    for (let pass = 0; pass < 2; pass++) {
+      for (const m of B.meshGL) {
+        const mt = B.mats[m.mat]; if ((mt.mode === 1) !== (pass === 1)) continue;
+        SV2.bind(m); SV2.setTex(B.texGL[mt.tex], mt.orm != null ? B.texGL[mt.orm] : null);
+        if (mt.cift || mt.name === 'flag') gl.disable(gl.CULL_FACE); else gl.enable(gl.CULL_FACE);
+        gl.uniform1f(u.uMode, mt.mode); gl.uniform1f(u.uKes, mt.kes); gl.uniform4fv(u.uRenk, mt.renk);
+        const g = (mt.mode === 1 ? Math.min(2.2, mt.guc * 0.55) : mt.guc * 0.8) * glowK; gl.uniform3f(u.uEmis, mt.emis[0] * g, mt.emis[1] * g, mt.emis[2] * g);
+        if (pass === 1) { gl.enable(gl.BLEND); gl.depthMask(false); }
+        gl.drawElements(gl.TRIANGLES, m.n, gl.UNSIGNED_SHORT, 0); SV.drawCalls++; SV.tris += m.n / 3;
+      }
+    }
+    gl.disable(gl.BLEND); gl.depthMask(true); gl.enable(gl.CULL_FACE); gl.uniform1f(u.uMode, 0); gl.uniform1f(u.uSkin, 0); gl.uniform1f(u.uFlash, 0); gl.uniform1f(u.uDim, 1); gl.uniform1f(u.uAlpha, 1); gl.uniform4f(u.uRenk, 1, 1, 1, 1); gl.uniform3f(u.uEmis, 0, 0, 0);
+  }
 }
 
 </script>
@@ -694,6 +937,7 @@ function handleKick3(name, data) {
     notePresent3(u, badges.includes('subscriber') || badges.includes('founder'));      // sohbete yazan "izliyor" sayılır
     if (/^!(seviye|level|lvl|sv)(\s|$)/i.test(txt) && !dedupe3('sv:' + k, 30000)) showCard3(u);
     if (yetkili && /^!test/i.test(txt)) chatTest3(txt, u);
+    if (/^!(boss|vur)/i.test(txt)) bossChat3(u, txt, yetkili);
   } else if (ev === 'SubscriptionEvent' || ev === 'ChannelSubscriptionEvent') {
     const u = data?.username; if (u && !dedupe3('sub:' + u.toLowerCase(), 15000)) { addXp(u, XP.sub); addEntry3(u); }
   } else if (ev === 'GiftedSubscriptionsEvent') {
@@ -734,7 +978,7 @@ function connectKick3() {
 function reconnect3() { retry3++; setTimeout(connectKick3, Math.min(30000, 1000 * 2 ** Math.min(retry3, 5))); }
 
 // ---------------- kendini güncelleme: GitHub'a yeni dosya yüklenince sayfa (saha boşken/beklerken) kendini yeniler ----------------
-const BUILD = '15.11-08.11.07';       // (kafa topu sayfası da bu satıra bakarak yeni sürümü fark eder)
+const BUILD = '16.11-23.11.51';       // (kafa topu sayfası da bu satıra bakarak yeni sürümü fark eder)
 const BUILD3 = BUILD;
 let updPending3 = null;
 async function checkUpdate3() {
@@ -744,11 +988,374 @@ async function checkUpdate3() {
   } catch (e) { }
 }
 function applyUpdate3() {
-  if (!updPending3 || !(live.st === 'bos' || live.st === 'bekle')) return;
+  if (!updPending3 || !(live.st === 'bos' || live.st === 'bekle') || bossActive3()) return;
   xpSave(); cloudSync3(true); const q = new URLSearchParams(location.search); q.set('v', updPending3); location.replace(location.pathname + '?' + q.toString() + location.hash);
 }
 // (sahne kodu herhangi bir nedenle çalışmasa bile sayfa yeni sürümü fark edip kendini yeniler)
 if (/^https?:/.test(location.protocol)) { setInterval(checkUpdate3, 60000); setInterval(applyUpdate3, 1000); }
+
+</script>
+<script>
+// ================== BOSS SAVAŞI ==================
+// !bossbaslat [zorluk]  (yayıncı / moderatör) → arena açılır, boss iner.   !bossbitir → savaşı iptal eder (ödül verilmez)
+// !vur  (herkes) → bossa vurur; hasar şövalyenin seviyesine bağlıdır, kişi başı BOSS.cd saniyede bir vuruş sayılır.
+// Sıralamadaki ilk 10 şövalye arenada durur; vuruşlar onların kılıcıyla görünür. Savaş bitince en çok hasar veren 5 kişinin tablosu çıkar.
+// Boss da vurur: !vur yazan herkesin bir canı vardır; boss saldırdıkça can azalır. Canı biten şövalye ölür: o savaşta bir daha vuramaz ve o savaştan ödül alamaz (eski puanına dokunulmaz).
+const BOSS = {
+  ad: 'GOLEM KOMUTAN',
+  sure: 180,          // savaş süresi (saniye); bitmeden ölmezse boss kaçar
+  cd: 3,              // bir kişinin iki vuruşu arasındaki en az süre (saniye)
+  zayif: 60,          // son bu kadar saniyede hasar iki katına çıkar ("zayıf nokta")
+  vurusHedef: 14,     // can ayarı: sohbetteki aktif kişilerin yarısı bu kadar vuruş yaparsa boss ölür
+  // ödüller (seviye puanı)
+  katilim: 100, vurusPuan: 10, vurusEnCok: 15,       // vuran herkese 100 + vuruş başına 10 (en çok 15 vuruş sayılır → en çok 250)
+  sira: [400, 250, 150, 75, 75],                     // en çok hasar veren ilk 5'e ek puan
+  sonVurus: 100,                                     // öldürücü vuruşu yapana ek puan
+  teselli: 50,                                       // boss kaçarsa vuran herkese
+  giris: 25,                                         // sinematik girişin süresi (saniye)
+  can: [150, 5],                                     // şövalyenin canı: 150 + seviye × 5
+  atis: { oran: 0.03, hasar: [70, 120] },            // top atışı: her atışta hayattaki vuranların %3'ü (en az 1 kişi) bu kadar hasar alır
+  ezme: { oran: 0.25, hasar: [50, 90] },             // yer sarsma: hayattaki vuranların her biri %25 ihtimalle bu kadar hasar alır
+};
+const BQ = new URLSearchParams(location.search);
+// boss paketi (model + arena): GitHub'daki depodan iner. Sayfa GitHub'dan ya da yerelden açıldıysa yanındaki dosya kullanılır.
+const BOSS_PAK = /github\.io$|localhost/.test(location.hostname) || location.protocol === 'file:' ? new URL('boss.pak', location.href).href : 'https://berkaywei.github.io/kafa-futbolu/boss.pak';
+const BREG = { x: +(BQ.get('bx') || 0), y: +(BQ.get('by') || 0), w: +(BQ.get('bw') || 1920), h: +(BQ.get('bh') || 1080) };      // boss sahnesinin ekrandaki yeri (varsayılan: tam ekran)
+const B3 = { st: 'yok', t: 0, fade: 0, hp: 0, maxHp: 1, left: 0, dmg: new Map(), last: null, total: 0, knights: [], model: null, load: null, err: '', shake: 0, act: 'bekle', actT: 0, next: 6, animT: 0, y: 0, tilt: 0, glow: 1, res: null, weak: false, shots: 0, zor: 1 };
+const BPOS = [0, 0, -2.4], BSC = 0.0062;
+const BSLOT = [[-13, 3.8], [13, 3.8], [-30, 3.8], [30, 3.8], [-50, 3.8], [50, 3.8], [-20, 5.4], [20, 5.4], [-40, 5.4], [40, 5.4]];      // sıralamaya göre yerler: [bossa göre açı, uzaklık] – ön sıra 6, arka sıra 4 (aralara)
+// ---- sinematik giriş: kamera dışarıdan girer, şövalyelerin arasından geçer; ayak sesleri; kapı açılır; boss yürüyüp çıkar ve kükrer ----
+const GIR = { adim: [8.4, 9.7, 10.8, 11.7, 12.5], kapi: 13.5, yuru: 15.8, yuruSure: 5.2, kukre: 21.3, z0: -16.4 };
+const KAM = [      // [saniye, kameranın yeri, baktığı yer]
+  [0, [0, 3.2, 24], [0, 3.0, 0]], [3.2, [0, 2.4, 14.6], [0, 2.2, -4]], [5.0, [0, 1.9, 8.0], [0, 2.0, -8]], [6.6, [0, 1.55, 2.2], [0, 2.2, -12]],
+  [8.2, [0, 1.5, -3.2], [0, 2.6, -13.5]], [13.2, [0, 1.45, -3.9], [0, 2.7, -13.5]], [15.6, [0, 1.4, -3.6], [0, 2.9, -13.5]],
+  [20.5, [0, 2.3, 5.8], [0, 2.9, -2.4]], [23.0, [0, 2.0, 5.2], [0, 3.0, -2.4]], [25, [0, 4.3, 10.6], [0, 1.95, -1.2]]];
+const sm3 = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+function kam3(T, k) {      // anahtar noktalar arasında yumuşak (Catmull-Rom) geçiş
+  let i = 0; while (i < KAM.length - 2 && T >= KAM[i + 1][0]) i++;
+  const u = Math.max(0, Math.min(1, (T - KAM[i][0]) / (KAM[i + 1][0] - KAM[i][0]))), P = (j) => KAM[Math.max(0, Math.min(KAM.length - 1, j))][k], a = P(i - 1), b = P(i), c = P(i + 1), d = P(i + 2), o = [0, 0, 0];
+  for (let q = 0; q < 3; q++) o[q] = 0.5 * (2 * b[q] + (c[q] - a[q]) * u + (2 * a[q] - 5 * b[q] + 4 * c[q] - d[q]) * u * u + (3 * b[q] - a[q] - 3 * c[q] + d[q]) * u * u * u);
+  return o;
+}
+function zemin3(z) { return z < -10.95 ? 0.38 : z < -9.4 ? 0.38 - 0.68 * (z + 10.95) / 1.55 : z < -6.5 ? -0.30 : z < -5.9 ? -0.30 + 0.30 * (z + 6.5) / 0.6 : 0; }      // bossun bastığı yerin yüksekliği (eşik, basamaklar, zemin, platform)
+function toz3(n) { for (let i = 0; i < n; i++) fx.push({ x: BREG.x + R2(0, BREG.w), y: BREG.y + R2(-40, BREG.h * 0.25), vx: R2(-25, 25), vy: R2(60, 220), l: R2(0.9, 1.8), col: Math.random() < 0.5 ? '#cbb89a' : '#9c8f7c', kind: 0 }); }      // tavandan dökülen toz
+
+// ---- sesler: hazır ses dosyası yok, hepsi anında üretilir (ayak sesi, kapı, kükreme, uğultu…). Adrese ?ses=0 eklenirse kapanır, ?ses=0.4 gibi bir değer kısar ----
+const SES3 = {
+  ctx: null, out: null, vol: Math.max(0, Math.min(1.5, parseFloat(BQ.get('ses') == null ? '0.6' : BQ.get('ses')) || 0)), log: null,
+  chain(ctx, vol) {      // çıkış: hafif yankı + sıkıştırıcı
+    const inp = ctx.createGain(), comp = ctx.createDynamicsCompressor(), master = ctx.createGain(); master.gain.value = vol;
+    comp.threshold.value = -18; comp.ratio.value = 8; comp.attack.value = 0.004; comp.release.value = 0.25; inp.connect(comp); comp.connect(master); master.connect(ctx.destination);
+    const d1 = ctx.createDelay(0.5), d2 = ctx.createDelay(0.5), fb = ctx.createGain(), lp = ctx.createBiquadFilter(), wet = ctx.createGain();
+    d1.delayTime.value = 0.113; d2.delayTime.value = 0.171; fb.gain.value = 0.42; lp.type = 'lowpass'; lp.frequency.value = 1500; wet.gain.value = 0.28;
+    inp.connect(d1); d1.connect(d2); d2.connect(lp); lp.connect(fb); fb.connect(d1); d1.connect(wet); d2.connect(wet); wet.connect(comp); return inp;
+  },
+  play(name, a, b) {
+    if (this.log) this.log.push([B3.clock, name, a, b]);
+    if (!this.vol) return;
+    try {
+      if (!this.ctx) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return; this.ctx = new C(); this.out = this.chain(this.ctx, this.vol); }
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (this.ctx.state !== 'running') return;      // tarayıcı sese izin vermediyse (OBS dışında, sayfaya tıklanmadan) sessiz kalır
+      SND[name](this.ctx, this.out, this.ctx.currentTime + 0.03, a, b);
+    } catch (e) { }
+  }
+};
+function gurultu3(ctx) { if (!ctx._n) { const b = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; ctx._n = b; } const s = ctx.createBufferSource(); s.buffer = ctx._n; s.loop = true; return s; }
+function zarf3(g, t, pts) { g.gain.setValueAtTime(0.0001, t); for (const [dt, v] of pts) g.gain.linearRampToValueAtTime(Math.max(0.0001, v), t + dt); }
+function suz3(ctx, type, f, q) { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q) b.Q.value = q; return b; }
+const SND = {
+  adim(ctx, out, t, g = 1) {      // ağır ayak sesi: derin vuruş + gürültü + ufak taş çıtırtısı
+    const o = ctx.createOscillator(), og = ctx.createGain(); o.frequency.setValueAtTime(74, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.28); zarf3(og, t, [[0.008, g], [0.12, 0.55 * g], [0.7, 0]]); o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.75);
+    const n = gurultu3(ctx), f = suz3(ctx, 'lowpass', 420), ng = ctx.createGain(); f.frequency.setValueAtTime(420, t); f.frequency.exponentialRampToValueAtTime(70, t + 0.5); zarf3(ng, t, [[0.006, 0.9 * g], [0.5, 0]]); n.connect(f); f.connect(ng); ng.connect(out); n.start(t); n.stop(t + 0.55);
+    const o3 = ctx.createOscillator(), g3 = ctx.createGain(); o3.type = 'triangle'; o3.frequency.setValueAtTime(170, t); o3.frequency.exponentialRampToValueAtTime(62, t + 0.16); zarf3(g3, t, [[0.005, 0.5 * g], [0.22, 0]]); o3.connect(g3); g3.connect(out); o3.start(t); o3.stop(t + 0.25);      // (küçük hoparlörde de duyulan orta frekanslı vuruş)
+    const n2 = gurultu3(ctx), f2 = suz3(ctx, 'bandpass', 2200, 0.8), g2 = ctx.createGain(); zarf3(g2, t, [[0.004, 0.10 * g], [0.09, 0]]); n2.connect(f2); f2.connect(g2); g2.connect(out); n2.start(t); n2.stop(t + 0.12);
+  },
+  kapi(ctx, out, t) {      // kapı: çarpma + gıcırtı + gümbürtü
+    SND.adim(ctx, out, t, 1.35);
+    const o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain(), g = ctx.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(58, t + 0.1); o.frequency.linearRampToValueAtTime(96, t + 0.7); o.frequency.linearRampToValueAtTime(64, t + 1.5);
+    lfo.frequency.value = 9; lg.gain.value = 14; lfo.connect(lg); lg.connect(o.frequency); zarf3(g, t, [[0.15, 0], [0.35, 0.22], [1.2, 0.16], [1.7, 0]]);
+    for (const [f, q] of [[380, 5], [820, 7]]) { const b = suz3(ctx, 'bandpass', f, q); o.connect(b); b.connect(g); } g.connect(out); o.start(t); lfo.start(t); o.stop(t + 1.8); lfo.stop(t + 1.8);
+    const n = gurultu3(ctx), f = suz3(ctx, 'lowpass', 110), ng = ctx.createGain(); zarf3(ng, t, [[0.05, 0.7], [1.9, 0]]); n.connect(f); f.connect(ng); ng.connect(out); n.start(t); n.stop(t + 2);
+  },
+  kukreme(ctx, out, t, dur = 3.0) {      // kükreme: kalın testere dalgaları + hırıltı + ağız boşluğu süzgeçleri + nefes
+    const mix = ctx.createGain(), am = ctx.createGain(), sh = ctx.createWaveShaper(), env = ctx.createGain(), cv = new Float32Array(257); for (let i = 0; i < 257; i++) cv[i] = Math.tanh((i / 128 - 1) * 3); sh.curve = cv;
+    for (const [mul, type, lv] of [[1, 'sawtooth', 0.5], [1.503, 'sawtooth', 0.28], [0.5, 'square', 0.3]]) {
+      const o = ctx.createOscillator(), g = ctx.createGain(); o.type = type; g.gain.value = lv; o.frequency.setValueAtTime(58 * mul, t); o.frequency.linearRampToValueAtTime(104 * mul, t + 0.3); o.frequency.linearRampToValueAtTime(92 * mul, t + 1.9); o.frequency.linearRampToValueAtTime(50 * mul, t + dur);
+      o.connect(g); g.connect(mix); o.start(t); o.stop(t + dur + 0.1);
+    }
+    am.gain.value = 0.62; const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.setValueAtTime(23, t); lfo.frequency.linearRampToValueAtTime(34, t + 0.5); lfo.frequency.linearRampToValueAtTime(26, t + dur); lg.gain.value = 0.38; lfo.connect(lg); lg.connect(am.gain); lfo.start(t); lfo.stop(t + dur + 0.1);
+    mix.connect(am); am.connect(sh);
+    for (const [f, q, lv, f2] of [[300, 3, 1.0, 520], [760, 4, 0.7, 1150], [1500, 5, 0.3, 2100]]) { const b = suz3(ctx, 'bandpass', f, q), g = ctx.createGain(); g.gain.value = lv; b.frequency.setValueAtTime(f, t); b.frequency.linearRampToValueAtTime(f2, t + 0.35); b.frequency.linearRampToValueAtTime(f2 * 0.92, t + 1.9); b.frequency.linearRampToValueAtTime(f * 0.9, t + dur); sh.connect(b); b.connect(g); g.connect(env); }
+    const n = gurultu3(ctx), nf = suz3(ctx, 'bandpass', 1000, 0.7), ng = ctx.createGain(); ng.gain.value = 0.35; n.connect(nf); nf.connect(ng); ng.connect(env); n.start(t); n.stop(t + dur + 0.1);
+    zarf3(env, t, [[0.16, 1.1], [2.0, 1.2], [dur, 0]]); env.connect(out);
+    const o = ctx.createOscillator(), og = ctx.createGain(); o.frequency.setValueAtTime(52, t); o.frequency.exponentialRampToValueAtTime(34, t + 0.8); zarf3(og, t, [[0.05, 0.7], [1.0, 0]]); o.connect(og); og.connect(out); o.start(t); o.stop(t + 1.1);
+  },
+  uguldama(ctx, out, t, dur = 12) {      // gergin, derin uğultu
+    const lp = suz3(ctx, 'lowpass', 160), g = ctx.createGain(); zarf3(g, t, [[2.5, 0.22], [dur - 2.5, 0.27], [dur, 0]]);
+    for (const f of [41, 41.5, 61.9]) { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.connect(lp); o.start(t); o.stop(t + dur + 0.1); }
+    lp.connect(g); g.connect(out);
+    const n = gurultu3(ctx), bp = suz3(ctx, 'bandpass', 420, 2), ng = ctx.createGain(); bp.frequency.setValueAtTime(300, t); bp.frequency.linearRampToValueAtTime(650, t + dur); zarf3(ng, t, [[3, 0.03], [dur - 1, 0.07], [dur, 0]]); n.connect(bp); bp.connect(ng); ng.connect(out); n.start(t); n.stop(t + dur + 0.1);
+  },
+  gecis(ctx, out, t) { const n = gurultu3(ctx), bp = suz3(ctx, 'bandpass', 300, 1.5), g = ctx.createGain(); bp.frequency.setValueAtTime(300, t); bp.frequency.exponentialRampToValueAtTime(1500, t + 0.6); bp.frequency.exponentialRampToValueAtTime(350, t + 1.3); zarf3(g, t, [[0.55, 0.22], [1.3, 0]]); n.connect(bp); bp.connect(g); g.connect(out); n.start(t); n.stop(t + 1.4); },      // kamera geçişi: hava sesi
+  atis(ctx, out, t) {      // top atışı
+    const n = gurultu3(ctx), f = suz3(ctx, 'lowpass', 3000), g = ctx.createGain(); f.frequency.setValueAtTime(3000, t); f.frequency.exponentialRampToValueAtTime(300, t + 0.22); zarf3(g, t, [[0.004, 0.5], [0.25, 0]]); n.connect(f); f.connect(g); g.connect(out); n.start(t); n.stop(t + 0.3);
+    const o = ctx.createOscillator(), og = ctx.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.15); zarf3(og, t, [[0.004, 0.6], [0.2, 0]]); o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.25);
+  },
+  patlama(ctx, out, t) {      // bossun yıkılışı
+    const n = gurultu3(ctx), f = suz3(ctx, 'lowpass', 900), g = ctx.createGain(); f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(60, t + 1.6); zarf3(g, t, [[0.01, 0.9], [1.8, 0]]); n.connect(f); f.connect(g); g.connect(out); n.start(t); n.stop(t + 1.9);
+    const o = ctx.createOscillator(), og = ctx.createGain(); o.frequency.setValueAtTime(60, t); o.frequency.exponentialRampToValueAtTime(24, t + 0.9); zarf3(og, t, [[0.01, 0.9], [1.2, 0]]); o.connect(og); og.connect(out); o.start(t); o.stop(t + 1.3);
+  }
+};
+function bossActive3() { return B3.st !== 'yok'; }
+function bossLoad3() {
+  if (!B3.load) B3.load = (async () => {
+    try {
+      if (!SV2.gl) SV2.init();
+      const pak = await SV2.load(BQ.get('pak') || BOSS_PAK);
+      B3.model = new Model2(pak.boss); B3.err = '';
+      if (pak.arena) pak.arena.isik.forEach((l, i) => { SV2.lights.set(l.slice(0, 3), i * 3); SV2.lightC.set(l.slice(3, 6), i * 3); });
+      SV2.fog = [0.045, 0.04, 0.085]; SV2.fogD = [15, 46];
+    } catch (e) { B3.err = String(e && e.message || e); B3.load = null; }
+  })();
+  return B3.load;
+}
+// sohbet komutları (canli.js her mesajda çağırır)
+function bossChat3(u, txt, yetkili) {
+  const p = txt.split(/\s+/), c = p[0].toLocaleLowerCase('tr');
+  if (c === '!bossbaslat' || c === '!bossbaşlat') { if (yetkili) bossStart3(parseFloat((p[1] || '').replace(',', '.')) || 1); }
+  else if (c === '!bossbitir') { if (yetkili && bossActive3()) { B3.st = 'cikis'; B3.t = 0; if (SES3.ctx) { try { SES3.ctx.close(); } catch (e) { } SES3.ctx = null; } } }      // (çalan sesler de kesilir)
+  else if (c === '!vur') bossHit3(u);
+}
+function bossStart3(zor) {
+  if (bossActive3()) return;
+  B3.zor = Math.max(0.05, Math.min(20, zor || 1)); B3.st = 'yukle'; B3.t = 0; B3.fade = 0;
+  // sıralamadaki isimlerin sohbetteki yazılışı (büyük/küçük harf) sunucudan alınır
+  const names = cloud3.on ? fetch(cloud3.url + '/siralama', { cache: 'no-store' }).then(r => r.json()).then(j => { for (const [ad] of (j.liste || [])) bossNames3[String(ad).toLowerCase()] = String(ad); }).catch(() => { }) : null;
+  Promise.all([bossLoad3(), Promise.race([names, new Promise(r => setTimeout(r, 2500))])]).then(() => { if (B3.st !== 'yukle') return; if (!B3.model) { B3.st = 'yok'; text([CW3 / 2, 200], 'Boss yüklenemedi', '#ff5a3c', 40, 3, 0, -10); return; } bossBegin3(); });
+}
+function bossBegin3() {
+  const est = Math.max(6, Math.min(400, present3.size * 0.5));
+  B3.maxHp = Math.round(est * BOSS.vurusHedef * 45 * B3.zor / 10) * 10; B3.hp = B3.maxHp; B3.left = BOSS.sure; B3.dmg = new Map(); B3.last = null; B3.total = 0; B3.res = null; B3.weak = false;
+  B3.st = 'giris'; B3.t = 0; B3.shake = 0; B3.vy = 0; B3.fell = false; B3.hpShow = null; B3.muzzle = 0; B3.act = 'bekle'; B3.actT = 0; B3.next = 7; B3.animT = 0; B3.y = 0; B3.tilt = 0; B3.glow = 1; B3.model.flash = 0; B3.model.dim = 0.12; B3.model.ovr.clear();
+  B3.olu = 0; B3.feed = []; B3.px = 0; B3.pz = GIR.z0; B3.gy = zemin3(GIR.z0); B3.roll = 0; B3.steps = 0; B3.door = 0; B3.lk = 0; B3.pulse = 0; B3.ei = 0; B3.clock = 0; B3.amp = 0; B3.nameA = 0; B3.agiz = 0;
+  const tum = (g) => { for (const f of B3.knights) if (!f.dead) bossKnock3(f, g); };
+  B3.ev = [[0, () => SES3.play('uguldama', 13.5)], [2.5, () => SES3.play('gecis')], [5.7, () => SES3.play('gecis')],
+    ...GIR.adim.map((s, i) => [s, () => { const g = 0.4 + 0.15 * i; SES3.play('adim', g); B3.shake = Math.max(B3.shake, 0.3 + 0.13 * i); B3.pulse = 1; toz3(8 + 5 * i); if (i >= 2) { const f = B3.knights[Math.floor(Math.random() * B3.knights.length)]; if (f) f.kb = 0.25; } }]),
+    [GIR.kapi, () => { SES3.play('kapi'); B3.shake = 1; toz3(45); tum(0.45); }],
+    [GIR.kukre, () => { SES3.play('kukreme'); }], [GIR.kukre + 0.45, () => { tum(0.9); toz3(30); }]];
+  // sıralamadaki ilk 10 (kanal sahibi ve botlar hariç)
+  const top = Object.keys(xpDB).filter(k => k !== KICK.slug && !BOTS3.has(k)).sort((a, b) => xpDB[b] - xpDB[a]).slice(0, 10);
+  B3.knights = top.map((k, i) => {
+    const name = (pend3[k] && pend3[k][0]) || bossNames3[k] || k, f = makeFighter(name, levelOf(name), 1), sl = BSLOT[i], ang = sl[0] * Math.PI / 180, rad = sl[1];
+    f.key = k; f.k.mirror = false; f.bx = BPOS[0] + Math.sin(ang) * rad; f.bz = BPOS[2] + Math.cos(ang) * rad; f.x = f.bx; f.z = f.bz; f.k.y = 0; f.kb = 0;
+    f.dx = BPOS[0] - f.bx; f.dz = BPOS[2] - f.bz; const l = Math.hypot(f.dx, f.dz); f.dx /= l; f.dz /= l; f.yawT = Math.atan2(f.dx, f.dz); f.k.yaw = f.yawT; f.st = 'idle'; f.cd = 0; return f;
+  });
+}
+const bossNames3 = Object.create(null);      // küçük harfli anahtar → sohbette görünen ad
+function bossHit3(u) {
+  if (B3.st !== 'savas' || !u) return; const k = u.toLowerCase(); if (BOTS3.has(k)) return; bossNames3[k] = u;
+  let e = B3.dmg.get(k); const now = performance.now();
+  const lv = levelOf(u);
+  if (!e) { e = { name: u, d: 0, n: 0, t: -1e9, hp: BOSS.can[0] + BOSS.can[1] * lv, dead: false }; e.maxHp = e.hp; B3.dmg.set(k, e); }
+  if (e.dead || now - e.t < BOSS.cd * 1000) return; e.t = now;      // ölen şövalye bu savaşta bir daha vuramaz
+  const crit = Math.random() < 0.12; let d = Math.round((20 + lv * 3) * R2(0.85, 1.15) * (crit ? 2 : 1) * (B3.weak ? 2 : 1));
+  d = Math.min(d, B3.hp); e.d += d; e.n++; B3.total += d; B3.hp -= d; B3.last = k;
+  // görüntü: vuran sahnedeyse kendi şövalyesi, değilse boşta olan bir şövalye kılıç sallar
+  const f = B3.knights.find(x => x.key === k) || B3.knights.filter(x => x.st === 'idle' && x.cd <= 0 && !x.dead).sort(() => Math.random() - 0.5)[0];
+  if (f && f.st !== 'hit') { setSt(f, 'attack'); f.cd = 0.9; }
+  const bp = SV.project(BPOS[0] + R2(-1.9, 1.9), R2(1.3, 4.6), BPOS[2] + 0.9), tier = tierOf(lv);
+  B3.model.flash = Math.min(0.5, B3.model.flash + 0.22);
+  if (fx.length < 90) { spark(bp, crit ? '#ffe45c' : '#ffffff', crit ? 16 : 7, 0.8); text([bp[0], bp[1]], u + '  -' + d, crit ? '#ffe45c' : TIER_COL[tier], crit ? 34 : 24, 1.1, R2(-40, 40), -70); }
+  if (B3.hp <= 0) { B3.st = 'oldu'; B3.t = 0; B3.act = 'bekle'; bossRewards3(true); }
+}
+// ödüller: sonuç tablosu için hesaplanır ve hemen puan olarak eklenir
+function bossRewards3(win) {
+  const list = [...B3.dmg.entries()].filter(([, e]) => e.n > 0).sort((a, b) => b[1].d - a[1].d), rows = []; let sira = 0, olu = 0;      // ödül sıralaması hayatta kalanlar arasında yapılır
+  list.forEach(([k, e], i) => {
+    let xp = 0;
+    if (e.dead) olu++; else { xp = win ? BOSS.katilim + BOSS.vurusPuan * Math.min(e.n, BOSS.vurusEnCok) + (BOSS.sira[sira] || 0) + (k === B3.last ? BOSS.sonVurus : 0) : BOSS.teselli; sira++; addXp(e.name, xp); }
+    if (i < 5) rows.push({ name: e.name, d: e.d, n: e.n, xp, dead: e.dead, tier: tierOf(levelOf(e.name)), last: win && k === B3.last });
+  });
+  B3.res = { win, rows, count: list.length, olu, total: B3.total };
+}
+// boss bir şövalyeye vurur: canı biterse ölür (sahnedeyse yere serilir)
+function bossHurt3(k, e, d, dusen) {
+  if (e.dead) return; e.hp -= d; const f = B3.knights.find(x => x.key === k);
+  if (e.hp <= 0) { e.hp = 0; e.dead = true; B3.olu++; dusen.push(e.name); if (f) { f.dead = true; setSt(f, 'ko'); f.k.flash = 1; f.kb = 0.6; } }
+  else if (f) bossKnock3(f, 0.9);
+}
+function bossStrike3(tur) {
+  const alive = [...B3.dmg.entries()].filter(([, e]) => !e.dead), dusen = [], c = BOSS[tur];
+  if (tur === 'atis') { const n = Math.min(alive.length, Math.max(1, Math.ceil(alive.length * c.oran))); for (let i = 0; i < n; i++) { const j = i + Math.floor(Math.random() * (alive.length - i)); [alive[i], alive[j]] = [alive[j], alive[i]]; bossHurt3(alive[i][0], alive[i][1], R2(c.hasar[0], c.hasar[1]), dusen); } }
+  else for (const [k, e] of alive) if (Math.random() < c.oran) bossHurt3(k, e, R2(c.hasar[0], c.hasar[1]), dusen);
+  if (dusen.length) { for (const s of dusen.slice(0, 3)) B3.feed.push({ s, t: 0 }); if (dusen.length > 3) B3.feed.push({ s: `+${dusen.length - 3} şövalye daha`, t: 0 }); while (B3.feed.length > 7) B3.feed.shift(); }
+}
+function bossKnock3(f, power) { setSt(f, 'hit'); f.k.flash = 1; f.kb = Math.max(f.kb, power); const p = SV.project(f.x, 0.7, f.z); if (p[2] > 0.3) spark(p, '#ffb060', 10, 0.7); }      // (kameranın arkasında kalan şövalyeden kıvılcım çıkmaz)
+
+// ---------------- her kare ----------------
+function bossTick3(dt, now) {
+  if (B3.st === 'yok') return false;
+  if (B3.st === 'yukle') { B3.t += dt; u2.clearRect(0, 0, CW3, CH3); drawFx3(dt); drawCards3(dt); return true; }      // paket inerken düello durur
+  const m = B3.model, T = (B3.t += dt), time = now / 1000;
+  // ---- durum akışı ----
+  B3.clock += dt;
+  if (B3.st === 'giris') {
+    B3.fade = Math.min(1, T / 1.2);
+    while (B3.ei < B3.ev.length && T >= B3.ev[B3.ei][0]) B3.ev[B3.ei++][1]();
+    B3.door = Math.max(0, Math.min(1, (T - GIR.kapi) / 1.3)); B3.door = 1 - (1 - B3.door) ** 3 * (1 + 2.2 * B3.door * (1 - B3.door) * Math.cos(B3.door * 9));      // kapı savrularak açılır
+    B3.lk = sm3((T - GIR.kapi) / 0.7) * (1 - 0.8 * sm3((T - 21.5) / 3)); B3.pulse = Math.max(0, B3.pulse - dt * 1.6);
+    // yürüyüş: bacaklar sırayla öne gelir, gövde sallanır; her adımda yer sarsılır
+    const u = Math.max(0, Math.min(1, (T - GIR.yuru) / GIR.yuruSure)), s = 0.65 * u + 0.35 * sm3(u), pz = GIR.z0 + (BPOS[2] - GIR.z0) * s, v = (pz - B3.pz) / Math.max(dt, 1e-4);
+    B3.pz = pz; B3.amp += (Math.min(1, v / 2.0) - B3.amp) * Math.min(1, dt * 8); B3.gy += (zemin3(pz) - B3.gy) * Math.min(1, dt * 9);
+    const ph = (pz - GIR.z0) / 3.1 * 2 * Math.PI, a = B3.amp, sn = Math.sin(ph), cs = Math.cos(ph);
+    m.rot('Bip001 L Thigh', 0, 0, a * 0.42 * sn); m.rot('Bip001 R Thigh', 0, 0, -a * 0.42 * sn); m.rot('Bip001 L Calf', 0, 0, -a * 0.6 * Math.max(0, cs)); m.rot('Bip001 R Calf', 0, 0, -a * 0.6 * Math.max(0, -cs));
+    B3.roll = a * 0.05 * sn; B3.y = -a * 0.05 * Math.abs(sn);
+    const n = Math.floor((ph - Math.PI / 2) / Math.PI) + 1;
+    if (u > 0 && n > B3.steps) { B3.steps = n; SES3.play('adim', 0.95); B3.shake = Math.max(B3.shake, 0.55); toz3(6); const sp = SV.project(R2(-0.6, 0.6), B3.gy + 0.1, pz + 0.6); if (sp[2] > 0.3) spark(sp, '#d8c8a8', 14, 0.9); }
+    m.dim = 0.12 + 0.88 * sm3((pz + 14.4) / 2.6);
+    // kükreme: geriye yaslanır, sonra öne eğilip kollarını açar
+    const r = T - GIR.kukre, k = sm3((r - 0.2) / 0.4) * (1 - sm3((r - 2.0) / 0.6)), lean = r < 0 ? 0 : r < 0.45 ? -0.22 * sm3(r / 0.45) : (-0.22 + 0.48 * sm3((r - 0.45) / 0.3)) * (1 - sm3((r - 2.0) / 0.7)) + (r < 2 ? 0.02 * Math.sin(r * 42) : 0);
+    m.rot('Bip001 Spine1', a * 0.10 * sn, 0, lean + a * 0.05); B3.agiz = k; m.rot('cene', 0.36 * k * (1 + 0.07 * Math.sin(r * 38)), 0, 0);      // kükrerken çene açılır m.rot('Bip001 L UpperArm', 0, -0.85 * k, -a * 0.22 * sn); m.rot('Bip001 R UpperArm', 0, 0.85 * k, a * 0.22 * sn);
+    B3.glow = 1 + 1.3 * k; if (k > 0.3) B3.shake = Math.max(B3.shake, 0.55 * k);
+    B3.nameA = sm3((T - 22.3) / 1.2);
+    if (T >= BOSS.giris) { B3.st = 'savas'; B3.t = 0; B3.pz = BPOS[2]; B3.gy = 0; B3.y = 0; B3.roll = 0; B3.glow = 1; B3.nameA = 1; B3.agiz = 0; m.ovr.clear(); m.dim = 1; for (const f of B3.knights) if (f.st !== 'idle') setSt(f, 'idle'); }
+  } else if (B3.st === 'savas') {
+    B3.left -= dt; if (!B3.weak && B3.left <= BOSS.zayif) { B3.weak = true; text([BREG.x + BREG.w / 2, BREG.y + BREG.h * 0.3], 'ZAYIF NOKTA AÇILDI!  HASAR ×2', '#ffe45c', 54, 2.6, 0, -18); }
+    if (B3.left <= 0) { B3.st = 'kacti'; B3.t = 0; B3.act = 'bekle'; bossRewards3(false); }
+    // boss saldırıları: silah ateşi ve yer sarsma (yalnızca görüntü; şövalyeler savrulur)
+    B3.actT += dt;
+    if (B3.act === 'bekle') { B3.animT += (0 - B3.animT) * Math.min(1, dt * 5); if (B3.actT > B3.next) { B3.act = Math.random() < 0.55 ? 'ates' : 'ezme'; B3.actT = 0; B3.shots = 0; } }
+    else if (B3.act === 'ates') {
+      const a = B3.actT;
+      if (a < 1.0) B3.animT = 1.3 * (a / 1.0); else if (a < 2.9) { B3.animT = 1.3 + (a - 1.0) * 0.9; const n = Math.floor((a - 1.1) / 0.45) + 1; if (n > B3.shots && B3.shots < 4) { B3.shots++; B3.shake = Math.max(B3.shake, 0.45); B3.muzzle = 0.22; SES3.play('atis'); bossStrike3('atis'); const c = B3.knights.filter(f => f.st === 'idle' && !f.dead); if (c.length) bossKnock3(c[Math.floor(Math.random() * c.length)], 0.5); } }
+      else if (a < 3.8) B3.animT = 11.5 + (a - 2.9) / 0.9; else { B3.act = 'bekle'; B3.actT = 0; B3.animT = 0; B3.next = R2(6, 10) * (B3.hp < B3.maxHp * 0.3 ? 0.6 : 1); }
+    } else if (B3.act === 'ezme') {
+      const a = B3.actT; B3.y = a < 0.9 ? Math.max(0, Math.sin(Math.min(1, a / 0.75) * Math.PI) * 1.5) : 0;
+      if (a >= 0.75 && !B3.shots) { B3.shots = 1; B3.shake = 1; SES3.play('adim', 1.25); bossStrike3('ezme'); for (const f of B3.knights) if (!f.dead && f.st !== 'hit') bossKnock3(f, 0.7); spark(SV.project(BPOS[0], 0.2, BPOS[2] + 1.2), '#d8c8a8', 70, 1.8); }
+      if (a > 1.6) { B3.act = 'bekle'; B3.actT = 0; B3.next = R2(6, 10) * (B3.hp < B3.maxHp * 0.3 ? 0.6 : 1); }
+    }
+  } else if (B3.st === 'oldu') {
+    B3.tilt = -1.42 * Math.min(1, (T / 1.5) ** 2); B3.glow = Math.max(0, 1 - T / 1.4) * (0.5 + 0.5 * Math.sin(T * 40)); m.dim = 1 - 0.45 * Math.min(1, T / 2); B3.animT += (0 - B3.animT) * Math.min(1, dt * 4);
+    if (T < 2.2 && Math.random() < dt * 9) { const p = SV.project(BPOS[0] + R2(-1.4, 1.4), R2(0.8, 3.6) * Math.cos(B3.tilt), BPOS[2] + 0.8); spark(p, Math.random() < 0.5 ? '#ff7a2a' : '#ffe45c', 18, 1.1); B3.shake = Math.max(B3.shake, 0.3); }
+    if (T > 1.45 && !B3.fell) { B3.fell = true; B3.shake = 1; SES3.play('patlama'); spark(SV.project(BPOS[0], 0.3, BPOS[2] - 1), '#d8c8a8', 70, 1.8); for (const f of B3.knights) if (!f.dead) setSt(f, 'win'); }
+    if (T > 4.2) { B3.st = 'sonuc'; B3.t = 0; }
+  } else if (B3.st === 'kacti') {
+    B3.y += dt * (2 + T * 9); B3.animT += (0 - B3.animT) * Math.min(1, dt * 4);      // boss havalanıp gider
+    if (T > 2.6) { B3.st = 'sonuc'; B3.t = 0; }
+  } else if (B3.st === 'sonuc') { if (T > 11) { B3.st = 'cikis'; B3.t = 0; } }
+  else if (B3.st === 'cikis') { B3.fade = Math.max(0, 1 - T / 0.7); if (T > 0.7) { B3.st = 'yok'; B3.knights = []; B3.fell = false; glc.style.opacity = ''; glc.style.filter = ''; return false; } }
+  B3.shake = Math.max(0, B3.shake - dt * 2.2); m.flash = Math.max(0, m.flash - dt * 2.5); B3.muzzle = Math.max(0, (B3.muzzle || 0) - dt);
+  // ---- şövalyeler ----
+  for (const f of B3.knights) {
+    f.t += dt; f.cd -= dt; f.kb = Math.max(0, f.kb - dt * 2.4);
+    if (f.dead) { if (f.st !== 'ko') setSt(f, 'ko'); f.k.dim = 0.6; } else if (f.st === 'attack' && f.t > 0.78) setSt(f, 'idle'); else if (f.st === 'hit' && f.t > 0.45) setSt(f, 'idle');
+    f.x = f.bx; f.z = f.bz; pose(f, dt);
+    const L = -f.k.off[0] - f.kb; f.k.x = f.bx + f.dx * L - f.k.off[0]; f.k.z = f.bz + f.dz * L;
+  }
+  if (B3.dry) return true;      // (denemelerde zamanı hızlı ilerletmek için: yalnızca mantık, çizim yok)
+  // ---- çizim ----
+  glc.style.opacity = B3.fade < 1 ? String(B3.fade) : '';
+  const sh = B3.shake * B3.shake * 0.16, sw = Math.sin(time * 0.23) * 0.7 * (B3.st === 'savas' ? Math.min(1, T / 4) : B3.st === 'giris' ? 0 : 1);
+  let eye = [sw, 4.3, 10.6], tgt = [sw * 0.25, 1.95, -1.2];
+  if (B3.st === 'giris') { eye = kam3(T, 1); tgt = kam3(T, 2); }
+  eye[0] += R2(-sh, sh); eye[1] += R2(-sh, sh); tgt[1] += R2(-sh, sh) * 0.5;
+  SV.begin(BREG, eye, tgt, 38, 80);
+  // kapı kanatları ve kapıdan gelen ışık
+  const A = SV2.pak.arena, K = A.kapi;
+  if (K) {
+    if (!B3.kn) B3.kn = [SV2.copies('kanatSol')[0], SV2.copies('kanatSag')[0], SV2.part('kapiIsik'), SV2.part('huzme')];
+    const th = B3.door * 1.8, fl = 0.9 + 0.1 * Math.sin(time * 13) * Math.sin(time * 7.1);
+    M4.trs(B3.kn[0].mA, -K.x, 0, K.z, 0, -th, 0, 1, 1, 1); M4.trs(B3.kn[1].mA, K.x, 0, K.z, 0, th, 0, 1, 1, 1); B3.kn[2].k = 0.04 + B3.lk * fl; B3.kn[3].k = B3.lk * 0.6 * fl;
+  }
+  SV2.begin([0.02, 0.02, 0.05]); SV2.drawArena(time);
+  const bob = Math.sin(time * 1.7) * 0.012, yaw = Math.sin(time * 0.6) * 0.05 * (B3.st === 'giris' ? 0 : 1);
+  M4.trs(m.M, B3.px, B3.gy + B3.y, B3.pz, B3.tilt, yaw, B3.roll, BSC, BSC * (1 + bob), BSC); m.pose(B3.animT); m.draw(B3.glow * (B3.hp < B3.maxHp * 0.3 && B3.st === 'savas' ? 1.5 + 0.5 * Math.sin(time * 9) : 1));
+  SV2.end();
+  const shadows = B3.knights.map(f => [f.k.x + f.k.off[0], f.k.z, 0.3 * f.k.sw, 1]); if ((B3.st !== 'kacti' || B3.y < 6) && B3.pz > -5.6) shadows.push([B3.px, B3.pz - (B3.tilt ? 1.4 : 0), 2.3, Math.max(0.15, 1 - B3.y / 8)]);
+  SV.drawShadows(shadows);
+  const cizgi = SV.outline; SV.outline = false; for (const f of B3.knights) f.k.draw(); SV.outline = cizgi;      // arenada şövalyeler dış çizgisiz çizilir (sinematik görünüm)
+  for (const g of A.ates) { const fl = 0.75 + 0.25 * Math.sin(time * 11 + g[0]) * Math.sin(time * 7.3 + g[2]); SV.glows.push([g[0], g[1], g[2], g[3] * (0.9 + 0.2 * fl), 1.0, 0.5, 0.14, 0.55 * fl]); }
+  if (B3.muzzle > 0) { const p = m.jointPos('Bip001 R Hand'); if (p) SV.glows.push([p[0], p[1] - 0.2, p[2] + 0.9, 3.2, 1.0, 0.6, 0.2, B3.muzzle / 0.22]); }
+  if (K) {      // kapı: açılmadan önce alttan sızan ışık, açılınca parlama
+    if (B3.pulse > 0 && B3.door < 0.05) SV.glows.push([0, K.y0 + 0.15, K.z + 0.25, 3.2, 1.0, 0.62, 0.25, 0.5 * B3.pulse]);
+    if (B3.lk > 0.01) { SV.glows.push([0, 2.9, K.z - 6.6, 13, 1.0, 0.8, 0.5, 0.8 * B3.lk]); SV.glows.push([0, 2.4, K.z - 6.4, 6, 1.0, 0.95, 0.8, 0.85 * B3.lk]); }      // ışık bossun arkasında: boss karaltı olarak görünür
+    const lf = sm3((B3.t - GIR.kapi) / 0.35) * (1 - sm3((B3.t - GIR.kapi - 0.9) / 1.5)) * (B3.st === 'giris' ? 1 : 0); if (lf > 0.01) { SV.glows.push([0, 2.9, K.z + 0.6, 12, 1.0, 0.85, 0.6, 0.9 * lf]); SV.glows.push([0, 2.6, K.z + 0.8, 6, 1.0, 0.97, 0.85, 0.9 * lf]); } B3.lf = lf;      // kapı açılırken göz alan parlama, sonra diner
+    B3.kp = SV.project(0, 2.7, K.z);
+  }
+  if (B3.agiz > 0.03) { const p = m.jointPos('cene'); if (p) { const fl = 0.8 + 0.2 * Math.sin(time * 31); SV.glows.push([p[0], p[1] - 0.20, p[2] + 0.34, 0.62, 1.0, 0.50, 0.12, 0.85 * B3.agiz * fl]); SV.glows.push([p[0], p[1] - 0.20, p[2] + 0.36, 0.30, 1.0, 0.85, 0.5, 0.9 * B3.agiz * fl]); } }      // açık ağzın içindeki kor
+  SV.drawGlows();
+  SV2.post(time, B3.st === 'giris' ? 0.20 : 0.12, B3.st === 'giris' ? 0.55 : 0.42);      // film filtresi
+  glc.style.filter = 'contrast(1.1) saturate(0.93)';
+  bossHud3(dt, time);
+  return true;
+}
+
+// ---------------- 2B katman: can çubuğu, süre, isimler, sonuç tablosu ----------------
+function bossHud3(dt, time) {
+  u2.clearRect(0, 0, CW3, CH3); u2.save(); u2.globalAlpha = B3.fade; u2.textBaseline = 'middle'; u2.lineJoin = 'round';
+  const k = BREG.w / 1920, cx = BREG.x + BREG.w / 2, F = (px, w = 700) => `${w} ${px * k}px KF, system-ui, sans-serif`;
+  const out = (s, x, y, col, lw) => { u2.lineWidth = lw * k; u2.strokeStyle = 'rgba(8,10,20,0.92)'; u2.strokeText(s, x, y); u2.fillStyle = col; u2.fillText(s, x, y); };
+  // şövalye isimleri
+  u2.textAlign = 'center';
+  if (B3.nameA > 0.01) for (const f of B3.knights) {      // isim; savaşa katıldıysa altında can çubuğu, öldüyse soluk
+    u2.globalAlpha = B3.fade * B3.nameA * (f.dead ? 0.55 : 1); const p = SV.project(f.k.x + f.k.off[0], (f.dead ? 0.55 : f.tier === 6 ? 1.5 : 1.25) * f.k.sh + f.k.off[1], f.k.z), sc = Math.min(1.5, 9 / p[2]) * k, e = B3.dmg.get(f.key);
+    u2.font = `700 ${22 * sc}px KF, system-ui, sans-serif`; u2.lineWidth = 6 * sc; u2.strokeStyle = 'rgba(8,10,20,0.9)'; u2.strokeText(f.name, p[0], p[1] - 14 * sc); u2.fillStyle = f.dead ? '#8b93a8' : TIER_COL[f.tier]; u2.fillText(f.name, p[0], p[1] - 14 * sc);
+    if (e && !e.dead) { const w = 64 * sc, h = 7 * sc, x = p[0] - w / 2, y = p[1] - 1 * sc, r = e.hp / e.maxHp; u2.fillStyle = 'rgba(8,10,20,0.85)'; u2.fillRect(x - 2 * sc, y - 2 * sc, w + 4 * sc, h + 4 * sc); u2.fillStyle = r > 0.5 ? '#53fc18' : r > 0.25 ? '#ffd24a' : '#ff5a3c'; u2.fillRect(x, y, w * r, h); }
+  }
+  u2.globalAlpha = B3.fade;
+  if (B3.st === 'giris') {
+    const T = B3.t;
+    if (B3.lk > 0.02 && B3.kp && B3.kp[2] > 0) {      // kapıdan süzülen ışık: parlama + ışın demetleri
+      const [px, py] = B3.kp, R0 = 900 * k * Math.min(2.2, 11 / B3.kp[2]), g = u2.createRadialGradient(px, py, 0, px, py, R0);
+      u2.save(); u2.globalCompositeOperation = 'lighter'; g.addColorStop(0, `rgba(255,225,170,${(0.16 + 0.5 * (B3.lf || 0)) * B3.lk})`); g.addColorStop(0.35, `rgba(255,170,90,${(0.10 + 0.2 * (B3.lf || 0)) * B3.lk})`); g.addColorStop(1, 'rgba(255,140,60,0)'); u2.fillStyle = g; u2.fillRect(BREG.x, BREG.y, BREG.w, BREG.h);
+      for (let i = 0; i < 14; i++) { const a = i * 0.449 + Math.sin(time * 0.31 + i * 1.7) * 0.07 + time * 0.02, w = 0.035 + 0.025 * Math.sin(i * 2.3), L = R0 * (1.2 + 0.7 * Math.sin(i * 1.3 + time * 0.5)); u2.beginPath(); u2.moveTo(px, py); u2.lineTo(px + Math.cos(a - w) * L, py + Math.sin(a - w) * L); u2.lineTo(px + Math.cos(a + w) * L, py + Math.sin(a + w) * L); u2.closePath(); const gr = u2.createRadialGradient(px, py, 0, px, py, L); gr.addColorStop(0, `rgba(255,215,150,${0.11 * B3.lk})`); gr.addColorStop(1, 'rgba(255,180,100,0)'); u2.fillStyle = gr; u2.fill(); }
+      u2.restore();
+    }
+    const bar = 96 * k * sm3(T / 1.0) * (1 - sm3((T - 23.4) / 1.3));      // sinema şeritleri
+    B3.bar = bar;
+    const a = sm3((T - GIR.kukre - 0.3) / 0.5) * (1 - sm3((T - (BOSS.giris - 0.7)) / 0.6));
+    if (a > 0.01) { u2.globalAlpha = B3.fade * a; u2.textAlign = 'center'; u2.font = F(120); out(BOSS.ad, cx, BREG.y + BREG.h * 0.73, '#ff5a3c', 22); u2.font = F(38); out('Sohbete  !vur  yazarak saldır', cx, BREG.y + BREG.h * 0.83, '#ffffff', 10); u2.globalAlpha = B3.fade; }
+  }
+  if (B3.st === 'savas' || B3.st === 'oldu' || B3.st === 'kacti' || (B3.st === 'giris' && B3.t > 23.2)) {
+    if (B3.st === 'giris') u2.globalAlpha = B3.fade * sm3((B3.t - 23.2) / 1.0);
+    const bw = 980 * k, bh = 38 * k, bx = cx - bw / 2, by = BREG.y + 64 * k, r = Math.max(0, B3.hp / B3.maxHp);
+    B3.hpShow = (B3.hpShow == null || B3.st === 'giris') ? r : B3.hpShow + (r - B3.hpShow) * Math.min(1, dt * 6);
+    u2.textAlign = 'center'; u2.font = F(34); out(BOSS.ad, cx, by - 26 * k, '#ffffff', 8);
+    rr3(bx - 6 * k, by - 6 * k, bw + 12 * k, bh + 12 * k, 12 * k); u2.fillStyle = 'rgba(8,10,20,0.88)'; u2.fill();
+    if (B3.hpShow > 0.004) { rr3(bx, by, Math.max(bh, bw * B3.hpShow), bh, 8 * k); u2.fillStyle = '#ffe9a0'; u2.fill(); }
+    if (r > 0.004) { rr3(bx, by, Math.max(bh, bw * r), bh, 8 * k); const g = u2.createLinearGradient(0, by, 0, by + bh); g.addColorStop(0, r > 0.3 ? '#ff6a4a' : '#ff9d3c'); g.addColorStop(1, r > 0.3 ? '#b81d1d' : '#d2480c'); u2.fillStyle = g; u2.fill(); }
+    u2.font = F(22); out(`${Math.ceil(B3.hp).toLocaleString('tr')} / ${B3.maxHp.toLocaleString('tr')}`, cx, by + bh / 2 + 1, '#ffffff', 6);
+    if (B3.st === 'savas') {
+      const s = Math.max(0, Math.ceil(B3.left)), tx = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      u2.textAlign = 'left'; u2.font = F(34); out(tx, bx + bw + 26 * k, by + bh / 2, B3.weak ? '#ffe45c' : '#ffffff', 8);
+      u2.textAlign = 'right'; u2.font = F(26); out(`${B3.dmg.size - B3.olu} şövalye savaşıyor`, bx - 26 * k, by + bh / 2 - (B3.olu ? 13 * k : 0), '#cfe4ff', 7); if (B3.olu) { u2.font = F(20); out(`${B3.olu} şövalye düştü`, bx - 26 * k, by + bh / 2 + 15 * k, '#ff8a6a', 6); }
+      u2.textAlign = 'right'; B3.feed.forEach((q, i) => { q.t += dt; const a = Math.min(1, q.t / 0.2) * Math.min(1, (7 - q.t) / 1.5); if (a <= 0) return; u2.globalAlpha = B3.fade * a; u2.font = F(24); out('\u2620 ' + q.s, BREG.x + BREG.w - 40 * k, BREG.y + (170 + i * 36) * k, '#ff8a6a', 7); }); B3.feed = B3.feed.filter(q => q.t < 7); u2.globalAlpha = B3.fade;      // düşenler
+      u2.textAlign = 'center'; u2.font = F(30); u2.globalAlpha = B3.fade * (0.75 + 0.25 * Math.sin(time * 4)); out(B3.weak ? 'ZAYIF NOKTA AÇIK: hasar ×2  ·  !vur' : 'Saldırmak için sohbete  !vur  yaz', cx, BREG.y + BREG.h - 54 * k, B3.weak ? '#ffe45c' : '#ffffff', 8); u2.globalAlpha = B3.fade;
+    }
+  }
+  if ((B3.st === 'oldu' && B3.t > 1.2) || B3.st === 'kacti') { u2.textAlign = 'center'; u2.font = F(120); const a = Math.min(1, (B3.t - (B3.st === 'oldu' ? 1.2 : 0)) / 0.4); u2.globalAlpha = B3.fade * a; out(B3.st === 'oldu' ? 'BOSS YENİLDİ!' : 'BOSS KAÇTI!', cx, BREG.y + BREG.h * 0.42, B3.st === 'oldu' ? '#ffd24a' : '#ff5a3c', 22); u2.globalAlpha = B3.fade; }
+  if (B3.st === 'sonuc' && B3.res) {
+    const R_ = B3.res, a = Math.min(1, B3.t / 0.4) * Math.min(1, (11 - B3.t) / 0.5), w = 1040 * k, rh = 74 * k, h = (250 + Math.max(1, R_.rows.length) * 74) * k, x = cx - w / 2, y = BREG.y + (BREG.h - h) / 2;
+    u2.globalAlpha = B3.fade * a; rr3(x, y, w, h, 22 * k); u2.fillStyle = 'rgba(10,12,24,0.93)'; u2.fill(); rr3(x, y, w, 12 * k, 6 * k); u2.fillStyle = R_.win ? '#ffd24a' : '#ff5a3c'; u2.fill();
+    u2.textAlign = 'center'; u2.fillStyle = R_.win ? '#ffd24a' : '#ff5a3c'; u2.font = F(54); u2.fillText(R_.win ? BOSS.ad + ' YENİLDİ' : BOSS.ad + ' KAÇTI', cx, y + 66 * k);
+    u2.fillStyle = '#9aa3bd'; u2.font = F(24, 400); u2.fillText('En çok hasar verenler', cx, y + 116 * k);
+    R_.rows.forEach((e, i) => {
+      const ry = y + 150 * k + i * rh; rr3(x + 30 * k, ry, w - 60 * k, rh - 10 * k, 12 * k); u2.fillStyle = i === 0 ? 'rgba(255,210,74,0.16)' : 'rgba(255,255,255,0.06)'; u2.fill();
+      const my = ry + (rh - 10 * k) / 2; u2.textAlign = 'left'; u2.font = F(34); u2.fillStyle = i === 0 ? '#ffd24a' : '#cfd6ea'; u2.fillText(String(i + 1), x + 56 * k, my);
+      u2.fillStyle = TIER_COL[e.tier]; let nm = e.name; while (nm.length > 3 && u2.measureText(nm).width > 420 * k) nm = nm.slice(0, -2) + '…'; u2.fillText(nm, x + 110 * k, my);
+      if (e.last) { const nw = u2.measureText(nm).width; u2.font = F(18); u2.fillStyle = '#ff9d3c'; u2.fillText('SON VURUŞ', x + 126 * k + nw, my + 2 * k); }
+      u2.textAlign = 'right'; u2.font = F(30); u2.fillStyle = '#ffffff'; u2.fillText(e.d.toLocaleString('tr') + ' hasar', x + w - 250 * k, my); u2.fillStyle = e.dead ? '#ff8a6a' : '#53fc18'; u2.fillText(e.dead ? '\u2620 düştü' : '+' + e.xp + ' puan', x + w - 56 * k, my);
+    });
+    if (!R_.rows.length) { u2.textAlign = 'center'; u2.font = F(30, 400); u2.fillStyle = '#cfd6ea'; u2.fillText('Kimse vurmadı', cx, y + 190 * k); }
+    u2.textAlign = 'center'; u2.font = F(24, 400); u2.fillStyle = '#9aa3bd';
+    u2.fillText(`${R_.count} şövalye savaştı` + (R_.olu ? ` · ${R_.olu} düştü (ödül yok)` : '') + (R_.count > R_.olu ? (R_.win ? ` · hayatta kalanlara en az +${BOSS.katilim + BOSS.vurusPuan} puan` : ` · hayatta kalanlara +${BOSS.teselli} puan`) : ''), cx, y + h - 46 * k);
+  }
+  u2.restore(); u2.textAlign = 'center'; u2.textBaseline = 'middle';
+  drawFx3(dt);
+  if (B3.st === 'giris' && B3.bar > 0.5) { u2.globalAlpha = B3.fade; u2.fillStyle = '#000'; u2.fillRect(BREG.x, BREG.y, BREG.w, B3.bar); u2.fillRect(BREG.x, BREG.y + BREG.h - B3.bar, BREG.w, B3.bar); u2.globalAlpha = 1; }      // sinema şeritleri en üstte
+  drawCards3(dt);
+}
 
 </script>
 <script>
@@ -882,9 +1489,31 @@ function buildShowcase(name) {
 // ---------------- çizim ----------------
 const GPAL = new Float32Array(64); GPAL.set([0.56, 0.58, 0.64, 0.1]);
 let fps = 0, fpsN = 0, fpsT = performance.now(), last = performance.now(), msAvg = 0, camA = 0;
+// kıvılcımlar ve uçan yazılar (düello ve boss savaşı ortak kullanır)
+function drawFx3(dt) {
+  u2.textAlign = 'center'; u2.textBaseline = 'middle'; u2.lineJoin = 'round';
+  for (let i = fx.length - 1; i >= 0; i--) {
+    const q = fx[i]; q.l -= dt; if (q.l <= 0) { fx.splice(i, 1); continue; }
+    q.x += q.vx * dt; q.y += q.vy * dt; if (q.kind === 0) q.vy += 900 * dt;
+    u2.globalAlpha = Math.min(1, q.l * 3);
+    if (q.kind === 0) { u2.fillStyle = q.col; u2.fillRect(q.x - 4, q.y - 4, 8, 8); }
+    else { u2.font = `700 ${q.fs || 44}px KF, system-ui, sans-serif`; u2.lineWidth = (q.fs || 44) * 0.22; u2.strokeStyle = 'rgba(8,10,20,0.9)'; u2.strokeText(q.s, q.x, q.y); u2.fillStyle = q.col; u2.fillText(q.s, q.x, q.y); }
+  }
+  u2.globalAlpha = 1;
+}
+function hud3(now, n) {
+  fpsN++; if (now - fpsT >= 1000) { fps = Math.round(fpsN * 1000 / (now - fpsT)); fpsN = 0; fpsT = now; const el = document.getElementById('olcum'); if (el) el.textContent = `${fps} kare/sn · ${n} şövalye · ${Math.round(SV.tris / 1000)} bin üçgen`; }
+  if (opt.hud) {
+    const s = `${fps} FPS · ${n} şövalye · ${Math.round(SV.tris / 1000)}b üçgen · ${msAvg.toFixed(1)} ms` + (opt.live ? ` · ${live.conn} · yayın ${liveSrc3} · izleyen ${present3.size} · bulut ${cloud3.st} · sıra ${live.queue.length} · boss ${B3.err ? 'hata: ' + B3.err : B3.model ? 'hazır' : 'yüklenmedi'} · ${BUILD3}` : '');
+    u2.font = `700 ${OBS ? 19 : 26}px KF, system-ui, sans-serif`; u2.textAlign = 'left'; const w = u2.measureText(s).width + 28, hx = REGION.x + 14, hy = OBS ? REGION.y + 8 : REGION.y + REGION.h - 56;
+    u2.fillStyle = 'rgba(8,10,20,0.78)'; u2.fillRect(hx, hy, w, 42); u2.fillStyle = fps >= 50 ? '#53fc18' : fps >= 30 ? '#ffd24a' : '#ff5a3c'; u2.textBaseline = 'middle'; u2.fillText(s, hx + 14, hy + 22);
+  }
+}
 function frame(now) {
+  if (window.KAYIT3) { requestAnimationFrame(frame); return; }      // (deneme kaydı: kareler dışarıdan tek tek ilerletilir)
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   const t0 = performance.now();
+  if (bossTick3(dt, now)) { msAvg += (performance.now() - t0 - msAvg) * 0.05; hud3(now, B3.knights.length); requestAnimationFrame(frame); return; }      // boss savaşı sürerken düello bekler
   let main;
   if (opt.live) { liveTick(dt); main = liveList(); }
   else main = opt.showcase ? showcase : [duel.a, duel.b];
@@ -920,21 +1549,9 @@ function frame(now) {
     u2.fillStyle = 'rgba(8,10,20,0.85)'; u2.fillRect(bx - 3, by - 3, bw + 6, bh + 6);
     u2.fillStyle = f.hp / f.maxHp > 0.35 ? '#53fc18' : '#ff5a3c'; u2.fillRect(bx, by, bw * f.hp / f.maxHp, bh);
   }
-  for (let i = fx.length - 1; i >= 0; i--) {
-    const q = fx[i]; q.l -= dt; if (q.l <= 0) { fx.splice(i, 1); continue; }
-    q.x += q.vx * dt; q.y += q.vy * dt; if (q.kind === 0) q.vy += 900 * dt;
-    u2.globalAlpha = Math.min(1, q.l * 3);
-    if (q.kind === 0) { u2.fillStyle = q.col; u2.fillRect(q.x - 4, q.y - 4, 8, 8); }
-    else { u2.font = `700 ${q.fs || 44}px KF, system-ui, sans-serif`; u2.lineWidth = (q.fs || 44) * 0.22; u2.strokeStyle = 'rgba(8,10,20,0.9)'; u2.strokeText(q.s, q.x, q.y); u2.fillStyle = q.col; u2.fillText(q.s, q.x, q.y); }
-  }
-  u2.globalAlpha = 1;
+  drawFx3(dt);
   drawCards3(dt);
-  fpsN++; if (now - fpsT >= 1000) { fps = Math.round(fpsN * 1000 / (now - fpsT)); fpsN = 0; fpsT = now; const el = document.getElementById('olcum'); if (el) el.textContent = `${fps} kare/sn · ${all.length} şövalye · ${Math.round(SV.tris / 1000)} bin üçgen`; }
-  if (opt.hud) {
-    const s = `${fps} FPS · ${all.length} şövalye · ${Math.round(SV.tris / 1000)}b üçgen · ${msAvg.toFixed(1)} ms` + (opt.live ? ` · ${live.conn} · yayın ${liveSrc3} · izleyen ${present3.size} · bulut ${cloud3.st} · sıra ${live.queue.length} · ${BUILD3}` : '');
-    u2.font = `700 ${OBS ? 19 : 26}px KF, system-ui, sans-serif`; u2.textAlign = 'left'; const w = u2.measureText(s).width + 28, hx = REGION.x + 14, hy = OBS ? REGION.y + 8 : REGION.y + REGION.h - 56;
-    u2.fillStyle = 'rgba(8,10,20,0.78)'; u2.fillRect(hx, hy, w, 42); u2.fillStyle = fps >= 50 ? '#53fc18' : fps >= 30 ? '#ffd24a' : '#ff5a3c'; u2.textBaseline = 'middle'; u2.fillText(s, hx + 14, hy + 22);
-  }
+  hud3(now, all.length);
   requestAnimationFrame(frame);
 }
 
@@ -986,6 +1603,7 @@ function bindUI() {
   $('cPuan').onclick = () => { const c = live.champ; if (!opt.live || !c) return; c.fixed = false; xpDB[c.key] = Math.max(xpDB[c.key] || 0, XP_AT[c.level]); addXp(c.name, 500); showCard3(c.name); };
   $('cBitir').onclick = () => chatTest3('!testbitir', 'x'); $('cSifirla').onclick = () => liveReset();
   $('zemin').onchange = () => { opt.ground = $('zemin').checked; }; $('zemin').checked = opt.ground;
+  if ($('cBoss')) { $('cBoss').onclick = () => bossStart3(0.15); $('cVur').onclick = () => { for (let i = 0; i < 6; i++) bossHit3(NAMES[Math.floor(Math.random() * NAMES.length)] + (i % 3)); }; }
   $('vitrin').onchange = () => { opt.showcase = $('vitrin').checked; if (opt.showcase) buildShowcase(duel.a.name); };
   $('vitrin').checked = opt.showcase;
   $('kal').value = opt.crowd; $('kalt').textContent = opt.crowd; $('cizgi').checked = SV.outline; $('don').checked = opt.spin;
@@ -1000,6 +1618,7 @@ function fit3() {
   newDuel(QP.get('sol'), +QP.get('sev1') || 0, QP.get('sag'), +QP.get('sev2') || 0); setCrowd(opt.crowd);
   if (opt.live && QP.get('baglanti') !== '0') { connectKick3(); if (/^https?:/.test(location.protocol)) { pollLive3(); setInterval(pollLive3, 120000); } }
   if (opt.live) cloudInit3();
+  if (opt.live && /^https?:/.test(location.protocol)) setTimeout(bossLoad3, 5000);      // boss paketi arka planda iner; !bossbaslat gelince hazır olur
   if (opt.showcase) buildShowcase(duel.a.name); bindUI(); syncUI(); fit3(); addEventListener('resize', fit3);
   requestAnimationFrame(frame);
 })();
